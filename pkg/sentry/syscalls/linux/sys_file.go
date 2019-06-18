@@ -304,23 +304,67 @@ func createAt(t *kernel.Task, dirFD kdefs.FD, addr usermem.Addr, flags uint, mod
 		return 0, syserror.ENOENT
 	}
 
-	err = fileOpAt(t, dirFD, path, func(root *fs.Dirent, d *fs.Dirent, name string) error {
-		if !fs.IsDir(d.Inode.StableAttr) {
-			return syserror.ENOTDIR
+	fileFlags := linuxToFlags(flags)
+	// Linux always adds the O_LARGEFILE flag when running in 64-bit mode.
+	fileFlags.LargeFile = true
+
+	err = fileOpAt(t, dirFD, path, func(root *fs.Dirent, parent *fs.Dirent, name string) error {
+		// Resolve the name to see if it exists, and follow any
+		// symlinks along the way. We must do the symlink resolution
+		// manually because if the symlink target does not exist, we
+		// must create the target (and not the symlink itself).
+		var (
+			found *fs.Dirent
+			err   error
+		)
+		remainingTraversals := uint(linux.MaxSymlinkTraversals)
+		for {
+			if !fs.IsDir(parent.Inode.StableAttr) {
+				return syserror.ENOTDIR
+			}
+
+			// Start by looking up the dirent at 'name'.
+			found, err = t.MountNamespace().FindLink(t, root, parent, name, &remainingTraversals)
+			if err != nil || !fs.IsSymlink(found.Inode.StableAttr) {
+				// We either got an error, or a non-symlink.
+				// Either way no more resolution is necessary.
+				break
+			}
+
+			// Try to resolve the symlink directly to a Dirent.
+			resolved, err := found.Inode.Getlink(t)
+			if err == nil || err != fs.ErrResolveViaReadlink {
+				// No more resolution necessary.
+				found.DecRef()
+				found = resolved
+				break
+			}
+
+			// Resolve the symlink to a path via Readlink.
+			path, err := found.Inode.Readlink(t)
+			if err != nil {
+				break
+			}
+
+			// Get the new parent from the target path.
+			newParentPath, newName := fs.SplitLast(path)
+			newParent, err := t.MountNamespace().FindInode(t, root, found, newParentPath, &remainingTraversals)
+			if err != nil {
+				break
+			}
+
+			// Repeat the process with the parent and name of the
+			// symlink target.
+			parent.DecRef()
+			parent = newParent
+			name = newName
 		}
 
-		fileFlags := linuxToFlags(flags)
-		// Linux always adds the O_LARGEFILE flag when running in 64-bit mode.
-		fileFlags.LargeFile = true
-
-		// Does this file exist already?
-		remainingTraversals := uint(linux.MaxSymlinkTraversals)
-		targetDirent, err := t.MountNamespace().FindInode(t, root, d, name, &remainingTraversals)
 		var newFile *fs.File
 		switch err {
 		case nil:
 			// The file existed.
-			defer targetDirent.DecRef()
+			defer found.DecRef()
 
 			// Check if we wanted to create.
 			if flags&linux.O_EXCL != 0 {
@@ -330,19 +374,19 @@ func createAt(t *kernel.Task, dirFD kdefs.FD, addr usermem.Addr, flags uint, mod
 			// Like sys_open, check for a few things about the
 			// filesystem before trying to get a reference to the
 			// fs.File. The same constraints on Check apply.
-			if err := targetDirent.Inode.CheckPermission(t, flagsToPermissions(flags)); err != nil {
+			if err := found.Inode.CheckPermission(t, flagsToPermissions(flags)); err != nil {
 				return err
 			}
 
 			// Should we truncate the file?
 			if flags&linux.O_TRUNC != 0 {
-				if err := targetDirent.Inode.Truncate(t, targetDirent, 0); err != nil {
+				if err := found.Inode.Truncate(t, found, 0); err != nil {
 					return err
 				}
 			}
 
 			// Create a new fs.File.
-			newFile, err = targetDirent.Inode.GetFile(t, targetDirent, fileFlags)
+			newFile, err = found.Inode.GetFile(t, found, fileFlags)
 			if err != nil {
 				return syserror.ConvertIntr(err, kernel.ERESTARTSYS)
 			}
@@ -351,19 +395,19 @@ func createAt(t *kernel.Task, dirFD kdefs.FD, addr usermem.Addr, flags uint, mod
 			// File does not exist. Proceed with creation.
 
 			// Do we have write permissions on the parent?
-			if err := d.Inode.CheckPermission(t, fs.PermMask{Write: true, Execute: true}); err != nil {
+			if err := parent.Inode.CheckPermission(t, fs.PermMask{Write: true, Execute: true}); err != nil {
 				return err
 			}
 
 			// Attempt a creation.
 			perms := fs.FilePermsFromMode(mode &^ linux.FileMode(t.FSContext().Umask()))
-			newFile, err = d.Create(t, root, name, fileFlags, perms)
+			newFile, err = parent.Create(t, root, name, fileFlags, perms)
 			if err != nil {
 				// No luck, bail.
 				return err
 			}
 			defer newFile.DecRef()
-			targetDirent = newFile.Dirent
+			found = newFile.Dirent
 		default:
 			return err
 		}
@@ -379,10 +423,10 @@ func createAt(t *kernel.Task, dirFD kdefs.FD, addr usermem.Addr, flags uint, mod
 		fd = uintptr(newFD)
 
 		// Queue the open inotify event. The creation event is
-		// automatically queued when the dirent is targetDirent. The
-		// open events are implemented at the syscall layer so we need
-		// to manually queue one here.
-		targetDirent.InotifyEvent(linux.IN_OPEN, 0)
+		// automatically queued when the dirent is found. The open
+		// events are implemented at the syscall layer so we need to
+		// manually queue one here.
+		found.InotifyEvent(linux.IN_OPEN, 0)
 
 		return nil
 	})

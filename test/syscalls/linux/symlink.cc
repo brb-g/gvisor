@@ -272,6 +272,47 @@ TEST(SymlinkTest, ChmodSymlink) {
   EXPECT_EQ(FilePermission(newpath), 0777);
 }
 
+// Test that creating an existing symlink with creat will create the target.
+TEST(SymlinkTest, CreatLinkCreatesTarget) {
+  const std::string target = NewTempAbsPath();
+  const std::string linkpath = NewTempAbsPath();
+
+  ASSERT_THAT(symlink(target.c_str(), linkpath.c_str()), SyscallSucceeds());
+
+  // Create the link.
+  int fd;
+  EXPECT_THAT(fd = creat(linkpath.c_str(), 0666), SyscallSucceeds());
+  ASSERT_THAT(close(fd), SyscallSucceeds());
+
+  // Target is created.
+  struct stat st;
+  EXPECT_THAT(stat(target.c_str(), &st), SyscallSucceeds());
+
+  ASSERT_THAT(unlink(linkpath.c_str()), SyscallSucceeds());
+  ASSERT_THAT(unlink(target.c_str()), SyscallSucceeds());
+}
+
+// Test that opening an existing symlink with O_CREAT will create the target.
+TEST(SymlinkTest, OpenLinkCreatesTarget) {
+  const std::string target = NewTempAbsPath();
+  const std::string linkpath = NewTempAbsPath();
+
+  ASSERT_THAT(symlink(target.c_str(), linkpath.c_str()), SyscallSucceeds());
+
+  // Open the link with O_CREAT.
+  int fd;
+  EXPECT_THAT(fd = open(linkpath.c_str(), O_CREAT | O_RDWR, 0666),
+              SyscallSucceeds());
+  ASSERT_THAT(close(fd), SyscallSucceeds());
+
+  // Target is created.
+  struct stat st;
+  EXPECT_THAT(stat(target.c_str(), &st), SyscallSucceeds());
+
+  ASSERT_THAT(unlink(linkpath.c_str()), SyscallSucceeds());
+  ASSERT_THAT(unlink(target.c_str()), SyscallSucceeds());
+}
+
 }  // namespace
 
 }  // namespace testing

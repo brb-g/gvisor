@@ -283,6 +283,16 @@ func bytesToIPAddress(addr []byte) tcpip.Address {
 	return tcpip.Address(addr)
 }
 
+// GetAddressFamily returns an address family of the given address.
+func GetAddressFamily(addr []byte) (uint16, *syserr.Error) {
+	// Make sure we have at least 2 bytes for the address family.
+	if len(addr) < 2 {
+		return 0, syserr.ErrInvalidArgument
+	}
+
+	return usermem.ByteOrder.Uint16(addr), nil
+}
+
 // GetAddress reads an sockaddr struct from the given address and converts it
 // to the FullAddress format. It supports AF_UNIX, AF_INET and AF_INET6
 // addresses.
@@ -466,6 +476,15 @@ func (s *SocketOperations) Readiness(mask waiter.EventMask) waiter.EventMask {
 // Connect implements the linux syscall connect(2) for sockets backed by
 // tpcip.Endpoint.
 func (s *SocketOperations) Connect(t *kernel.Task, sockaddr []byte, blocking bool) *syserr.Error {
+	family, err := GetAddressFamily(sockaddr)
+	if err != nil {
+		return err
+	}
+	if family == linux.AF_UNSPEC {
+		if ep, ok := s.Endpoint.(tcpip.EndpointWithDisconnect); ok {
+			return syserr.TranslateNetstackError(ep.Disconnect())
+		}
+	}
 	addr, err := GetAddress(s.family, sockaddr)
 	if err != nil {
 		return err

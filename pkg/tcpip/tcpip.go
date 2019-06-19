@@ -289,6 +289,11 @@ type ControlMessages struct {
 	Timestamp int64
 }
 
+// EndpointWithDisconnect is the interface for endpoints with a Disconnect method.
+type EndpointWithDisconnect interface {
+	Disconnect() *Error
+}
+
 // Endpoint is the interface implemented by transport protocols (e.g., tcp, udp)
 // that exposes functionality like read, write, connect, etc. to users of the
 // networking stack.

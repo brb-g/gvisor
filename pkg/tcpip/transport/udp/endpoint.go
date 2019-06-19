@@ -698,6 +698,33 @@ func (e *endpoint) checkV4Mapped(addr *tcpip.FullAddress, allowMismatch bool) (t
 	return netProto, nil
 }
 
+// Disconnect disconnects the endpoint.
+func (e *endpoint) Disconnect() *tcpip.Error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if e.state != stateConnected {
+		return nil
+	}
+	id := stack.TransportEndpointID{
+		LocalPort:    e.id.LocalPort,
+		LocalAddress: e.id.LocalAddress,
+	}
+	id, err := e.registerWithStack(e.regNICID, e.effectiveNetProtos, id)
+	if err != nil {
+		return err
+	}
+
+	e.stack.UnregisterTransportEndpoint(e.regNICID, e.effectiveNetProtos, ProtocolNumber, e.id, e)
+	e.id = id
+	e.route.Release()
+	e.route = stack.Route{}
+	e.state = stateBound
+	e.dstPort = 0
+
+	return nil
+}
+
 // Connect connects the endpoint to its peer. Specifying a NIC is optional.
 func (e *endpoint) Connect(addr tcpip.FullAddress) *tcpip.Error {
 	if addr.Port == 0 {

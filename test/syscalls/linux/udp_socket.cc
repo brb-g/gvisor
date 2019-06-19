@@ -288,6 +288,7 @@ TEST_P(UdpSocketTest, ReceiveAfterConnect) {
   // Connect s_ to loopback:TestPort, and bind t_ to loopback:TestPort.
   ASSERT_THAT(connect(s_, addr_[0], addrlen_), SyscallSucceeds());
   ASSERT_THAT(bind(t_, addr_[0], addrlen_), SyscallSucceeds());
+  ASSERT_THAT(connect(t_, addr_[1], addrlen_), SyscallSucceeds());
 
   // Get the address s_ was bound to during connect.
   struct sockaddr_storage addr;
@@ -296,18 +297,31 @@ TEST_P(UdpSocketTest, ReceiveAfterConnect) {
               SyscallSucceeds());
   EXPECT_EQ(addrlen, addrlen_);
 
-  // Send from t_ to s_.
-  char buf[512];
-  RandomizeBuffer(buf, sizeof(buf));
-  ASSERT_THAT(sendto(t_, buf, sizeof(buf), 0,
-                     reinterpret_cast<sockaddr*>(&addr), addrlen),
-              SyscallSucceedsWithValue(sizeof(buf)));
+  for (int i = 0; i < 2; i++) {
+    // Send from t_ to s_.
+    char buf[512];
+    RandomizeBuffer(buf, sizeof(buf));
+    EXPECT_THAT(getsockname(s_, reinterpret_cast<sockaddr*>(&addr), &addrlen),
+                SyscallSucceeds());
+    ASSERT_THAT(sendto(t_, buf, sizeof(buf), 0,
+                       reinterpret_cast<sockaddr*>(&addr), addrlen),
+                SyscallSucceedsWithValue(sizeof(buf)));
 
-  // Receive the data.
-  char received[512];
-  EXPECT_THAT(recv(s_, received, sizeof(received), 0),
-              SyscallSucceedsWithValue(sizeof(received)));
-  EXPECT_EQ(memcmp(buf, received, sizeof(buf)), 0);
+    // Receive the data.
+    char received[512];
+    EXPECT_THAT(recv(s_, received, sizeof(received), 0),
+                SyscallSucceedsWithValue(sizeof(received)));
+    EXPECT_EQ(memcmp(buf, received, sizeof(buf)), 0);
+
+    auto family = addr_[0]->sa_family;
+    // Disconnect s_.
+    addr_[0]->sa_family = AF_UNSPEC;
+    ASSERT_THAT(connect(s_, addr_[0], addrlen_), SyscallSucceeds());
+    ASSERT_THAT(connect(t_, addr_[0], addrlen_), SyscallSucceeds());
+    // Connect s_ loopback:TestPort.
+    addr_[0]->sa_family = family;
+    ASSERT_THAT(connect(s_, addr_[0], addrlen_), SyscallSucceeds());
+  }
 }
 
 TEST_P(UdpSocketTest, Connect) {
@@ -324,15 +338,28 @@ TEST_P(UdpSocketTest, Connect) {
   // Try to bind after connect.
   EXPECT_THAT(bind(s_, addr_[1], addrlen_), SyscallFailsWithErrno(EINVAL));
 
-  // Try to connect again.
-  EXPECT_THAT(connect(s_, addr_[2], addrlen_), SyscallSucceeds());
+  for (int i = 0; i < 2; i++) {
+    // Try to connect again.
+    EXPECT_THAT(connect(s_, addr_[2], addrlen_), SyscallSucceeds());
 
-  // Check that peer name changed.
-  peerlen = sizeof(peer);
-  EXPECT_THAT(getpeername(s_, reinterpret_cast<sockaddr*>(&peer), &peerlen),
-              SyscallSucceeds());
-  EXPECT_EQ(peerlen, addrlen_);
-  EXPECT_EQ(memcmp(&peer, addr_[2], addrlen_), 0);
+    // Check that peer name changed.
+    peerlen = sizeof(peer);
+    EXPECT_THAT(getpeername(s_, reinterpret_cast<sockaddr*>(&peer), &peerlen),
+                SyscallSucceeds());
+    EXPECT_EQ(peerlen, addrlen_);
+    EXPECT_EQ(memcmp(&peer, addr_[2], addrlen_), 0);
+
+    auto family = addr_[2]->sa_family;
+    addr_[2]->sa_family = AF_UNSPEC;
+    // Try to disconnect.
+    EXPECT_THAT(connect(s_, addr_[2], addrlen_), SyscallSucceeds());
+
+    peerlen = sizeof(peer);
+    EXPECT_THAT(getpeername(s_, reinterpret_cast<sockaddr*>(&peer), &peerlen),
+                SyscallFailsWithErrno(ENOTCONN));
+
+    addr_[2]->sa_family = family;
+  }
 }
 
 TEST_P(UdpSocketTest, SendToAddressOtherThanConnected) {

@@ -436,14 +436,6 @@ func (s *Sandbox) createSandboxProcess(conf *boot.Config, args *Args, startSyncF
 		}
 		defer tty.Close()
 
-		// Set the TTY as a controlling TTY on the sandbox process.
-		// Note that the Ctty field must be the FD of the TTY in the
-		// *new* process, not this process. Since we are about to
-		// assign the TTY to nextFD, we can use that value here.
-		// stdin, we can use FD 0 here.
-		cmd.SysProcAttr.Setctty = true
-		cmd.SysProcAttr.Ctty = nextFD
-
 		// Pass the tty as all stdio fds to sandbox.
 		for i := 0; i < 3; i++ {
 			cmd.ExtraFiles = append(cmd.ExtraFiles, tty)

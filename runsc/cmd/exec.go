@@ -233,9 +233,7 @@ func (ex *Exec) execChildAndWait(waitStatus *syscall.WaitStatus) subcommands.Exi
 		cmd.Stdout = tty
 		cmd.Stderr = tty
 		cmd.SysProcAttr = &syscall.SysProcAttr{
-			Setsid:  true,
-			Setctty: true,
-			Ctty:    int(tty.Fd()),
+			Setsid: true,
 		}
 	}
 

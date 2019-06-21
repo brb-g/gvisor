@@ -287,6 +287,12 @@ type ControlMessages struct {
 	// Timestamp is the time (in ns) that the last packed used to create
 	// the read data was received.
 	Timestamp int64
+
+	// HasInq indicates whether Inq is valid/set.
+	HasInq bool
+
+	// Inq is the number of bytes ready to be received.
+	Inq int32
 }
 
 // Endpoint is the interface implemented by transport protocols (e.g., tcp, udp)
@@ -478,6 +484,13 @@ type KeepaliveIntervalOption time.Duration
 // of un-ACKed TCP keepalives that will be sent before the connection is
 // closed.
 type KeepaliveCountOption int
+
+// InqEnabledOption is used by SetSockOpt/GetSockOpt to specify whether
+// TCP_INQ is enabled for this socket.
+type InqEnabledOption int
+
+// InqSizeOption is used in GetSockOpt to get the number of bytes ready to be received.
+type InqSizeOption int
 
 // CongestionControlOption is used by SetSockOpt/GetSockOpt to set/get
 // the current congestion control algorithm.

@@ -810,6 +810,9 @@ func recvSingleMsg(t *kernel.Task, s socket.Socket, msgPtr usermem.Addr, flags i
 	if cms.IP.HasTimestamp {
 		controlData = control.PackTimestamp(t, cms.IP.Timestamp, controlData)
 	}
+	if cms.IP.HasInq {
+		controlData = control.PackInq(t, cms.IP.Inq, controlData)
+	}
 
 	if cms.Unix.Rights != nil {
 		controlData, mflags = control.PackRights(t, cms.Unix.Rights.(control.SCMRights), flags&linux.MSG_CMSG_CLOEXEC != 0, controlData, mflags)

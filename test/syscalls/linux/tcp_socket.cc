@@ -520,6 +520,67 @@ TEST_P(TcpSocketTest, SetNoDelay) {
   EXPECT_EQ(get, kSockOptOff);
 }
 
+TEST_P(TcpSocketTest, TcpInq) {
+  char buf[1024];
+  ASSERT_THAT(RetryEINTR(write)(s_, buf, sizeof(buf)),
+              SyscallSucceedsWithValue(sizeof(buf)));
+
+  constexpr int _TCP_INQ = 36;
+  constexpr int kChunk = 256;
+  // 2500 was chosen as a small value that can be set on Linux.
+  int val = 1;
+  EXPECT_THAT(setsockopt(t_, SOL_TCP, _TCP_INQ, &val, sizeof(val)),
+              SyscallSucceedsWithValue(0));
+  val = 0;
+  socklen_t slen = sizeof(val);
+  EXPECT_THAT(getsockopt(t_, SOL_TCP, _TCP_INQ, &val, &slen),
+              SyscallSucceedsWithValue(0));
+  ASSERT_EQ(val, 1);
+
+  int size = sizeof(buf);
+  struct msghdr msg = {};
+  std::vector<char> control(CMSG_SPACE(sizeof(int)));
+  struct iovec iov;
+  for (int i = 0; i < sizeof(buf); i += kChunk) {
+    msg.msg_control = &control[0];
+    msg.msg_controllen = control.size();
+
+    iov.iov_base = buf;
+    iov.iov_len = kChunk;
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    ASSERT_THAT(RetryEINTR(recvmsg)(t_, &msg, 0),
+                SyscallSucceedsWithValue(kChunk));
+    size -= kChunk;
+
+    struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
+    ASSERT_NE(cmsg, nullptr);
+    ASSERT_EQ(cmsg->cmsg_len, CMSG_LEN(sizeof(int)));
+    ASSERT_EQ(cmsg->cmsg_level, SOL_TCP);
+    ASSERT_EQ(cmsg->cmsg_type, _TCP_INQ);
+    ASSERT_EQ(*(int*)CMSG_DATA(cmsg), size);
+  }
+
+  // Check that a control message isn't returned if the TCP_INQ option is
+  // disabled.
+  ASSERT_THAT(RetryEINTR(write)(s_, buf, sizeof(buf)),
+              SyscallSucceedsWithValue(sizeof(buf)));
+  val = 0;
+  EXPECT_THAT(setsockopt(t_, SOL_TCP, _TCP_INQ, &val, sizeof(val)),
+              SyscallSucceedsWithValue(0));
+
+  msg.msg_control = &control[0];
+  msg.msg_controllen = control.size();
+  iov.iov_base = buf;
+  iov.iov_len = kChunk;
+  msg.msg_iov = &iov;
+  msg.msg_iovlen = 1;
+  ASSERT_THAT(RetryEINTR(recvmsg)(t_, &msg, 0),
+              SyscallSucceedsWithValue(kChunk));
+  struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
+  ASSERT_EQ(cmsg, nullptr);
+}
+
 INSTANTIATE_TEST_SUITE_P(AllInetTests, TcpSocketTest,
                          ::testing::Values(AF_INET, AF_INET6));
 

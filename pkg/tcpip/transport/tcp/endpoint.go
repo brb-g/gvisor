@@ -221,6 +221,7 @@ type endpoint struct {
 	boundNICID        tcpip.NICID `state:"manual"`
 	route             stack.Route `state:"manual"`
 	v6only            bool
+	inqSCMEnabled     bool
 	isConnectNotified bool
 	// TCP should never broadcast but Linux nevertheless supports enabling/
 	// disabling SO_BROADCAST, albeit as a NOOP.
@@ -989,6 +990,12 @@ func (e *endpoint) SetSockOpt(opt interface{}) *tcpip.Error {
 		e.v6only = v != 0
 		return nil
 
+	case tcpip.InqEnabledOption:
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		e.inqSCMEnabled = v != 0
+		return nil
+
 	case tcpip.KeepaliveEnabledOption:
 		e.keepalive.Lock()
 		e.keepalive.enabled = v != 0
@@ -1100,6 +1107,19 @@ func (e *endpoint) GetSockOpt(opt interface{}) *tcpip.Error {
 		e.rcvListMu.Unlock()
 		return nil
 
+	case *tcpip.InqSizeOption:
+		if !e.inqSCMEnabled {
+			*o = tcpip.InqSizeOption(-1)
+			return nil
+		}
+		v, err := e.readyReceiveSize()
+		if err != nil {
+			return err
+		}
+
+		*o = tcpip.InqSizeOption(v)
+		return nil
+
 	case *tcpip.ReceiveQueueSizeOption:
 		v, err := e.readyReceiveSize()
 		if err != nil {
@@ -1160,6 +1180,17 @@ func (e *endpoint) GetSockOpt(opt interface{}) *tcpip.Error {
 
 		e.mu.Lock()
 		v := e.v6only
+		e.mu.Unlock()
+
+		*o = 0
+		if v {
+			*o = 1
+		}
+		return nil
+
+	case *tcpip.InqEnabledOption:
+		e.mu.Lock()
+		v := e.inqSCMEnabled
 		e.mu.Unlock()
 
 		*o = 0

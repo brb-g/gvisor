@@ -854,6 +854,18 @@ func getSockOptTCP(t *kernel.Task, ep commonEndpoint, name, outLen int) (interfa
 
 		return int32(v), nil
 
+	case linux.TCP_INQ:
+		if outLen < sizeOfInt32 {
+			return nil, syserr.ErrInvalidArgument
+		}
+
+		var v tcpip.InqEnabledOption
+		if err := ep.GetSockOpt(&v); err != nil {
+			return nil, syserr.TranslateNetstackError(err)
+		}
+
+		return int32(v), nil
+
 	case linux.TCP_QUICKACK:
 		if outLen < sizeOfInt32 {
 			return nil, syserr.ErrInvalidArgument
@@ -1246,6 +1258,18 @@ func setSockOptTCP(t *kernel.Task, ep commonEndpoint, name int, optVal []byte) *
 			return syserr.TranslateNetstackError(err)
 		}
 		return nil
+
+	case linux.TCP_INQ:
+		if len(optVal) < sizeOfInt32 {
+			return syserr.ErrInvalidArgument
+		}
+
+		v := usermem.ByteOrder.Uint32(optVal)
+		if v > 1 {
+			return syserr.ErrInvalidArgument
+		}
+		return syserr.TranslateNetstackError(ep.SetSockOpt(tcpip.InqEnabledOption(v)))
+
 	case linux.TCP_REPAIR_OPTIONS:
 		t.Kernel().EmitUnimplementedEvent(t)
 
@@ -1471,7 +1495,6 @@ func emitUnimplementedEventTCP(t *kernel.Task, name int) {
 		linux.TCP_FASTOPEN_CONNECT,
 		linux.TCP_FASTOPEN_KEY,
 		linux.TCP_FASTOPEN_NO_COOKIE,
-		linux.TCP_INQ,
 		linux.TCP_KEEPCNT,
 		linux.TCP_KEEPIDLE,
 		linux.TCP_KEEPINTVL,
@@ -1726,6 +1749,15 @@ func (s *SocketOperations) coalescingRead(ctx context.Context, dst usermem.IOSeq
 	return 0, err
 }
 
+func (s *SocketOperations) fillCmsgInq(cmsg *socket.ControlMessages) {
+	var rql tcpip.InqSizeOption
+	if err := s.Endpoint.GetSockOpt(&rql); err == nil && rql >= 0 {
+		available := len(s.readView) + int(rql)
+		cmsg.IP.HasInq = true
+		cmsg.IP.Inq = int32(available)
+	}
+}
+
 // nonBlockingRead issues a non-blocking read.
 //
 // TODO(b/78348848): Support timestamps for stream sockets.
@@ -1745,7 +1777,9 @@ func (s *SocketOperations) nonBlockingRead(ctx context.Context, dst usermem.IOSe
 		s.readMu.Lock()
 		n, err := s.coalescingRead(ctx, dst, trunc)
 		s.readMu.Unlock()
-		return n, 0, nil, 0, socket.ControlMessages{}, err
+		cmsg := s.controlMessages()
+		s.fillCmsgInq(&cmsg)
+		return n, 0, nil, 0, cmsg, err
 	}
 
 	s.readMu.Lock()
@@ -1827,7 +1861,9 @@ func (s *SocketOperations) nonBlockingRead(ctx context.Context, dst usermem.IOSe
 		n = msgLen
 	}
 
-	return n, flags, addr, addrLen, s.controlMessages(), syserr.FromError(err)
+	cmsg := s.controlMessages()
+	s.fillCmsgInq(&cmsg)
+	return n, flags, addr, addrLen, cmsg, syserr.FromError(err)
 }
 
 func (s *SocketOperations) controlMessages() socket.ControlMessages {

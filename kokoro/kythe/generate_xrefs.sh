@@ -9,6 +9,8 @@ bazel version
 pyenv versions
 pyenv global 3.6.1
 
+strings /usr/lib/x86_64-linux-gnu/libstdc++.so.6 | grep GLIBCXX
+
 readonly KYTHE_VERSION='v0.0.37'
 readonly WORKDIR="$(mktemp -d)"
 readonly KYTHE_DIR="${WORKDIR}/kythe-${KYTHE_VERSION}"

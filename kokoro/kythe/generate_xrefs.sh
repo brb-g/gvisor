@@ -8,8 +8,11 @@ readonly KZIP_FILENAME="$(git rev-parse HEAD).kzip"
 
 wget -q -O "${WORKDIR}/kythe.tar.gz" \
   "https://github.com/kythe/kythe/releases/download/${KYTHE_VERSION}/kythe-${KYTHE_VERSION}.tar.gz"
-tar --no-same-owner -xvzf "${WORKDIR}/kythe.tar.gz" --directory "$WORKDIR"
+tar --no-same-owner -xzf "${WORKDIR}/kythe.tar.gz" --directory "$WORKDIR"
 
+if [[ -n "$KOKORO_ARTIFACTS_DIR" ]]; then
+  cd "${KOKORO_ARTIFACTS_DIR}/github/gvisor"
+fi
 bazel \
   --bazelrc="${KYTHE_DIR}/extractors.bazelrc" \
   build \

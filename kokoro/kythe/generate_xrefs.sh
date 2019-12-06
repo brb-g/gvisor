@@ -13,6 +13,7 @@ tar --no-same-owner -xzf "${WORKDIR}/kythe.tar.gz" --directory "$WORKDIR"
 if [[ -n "$KOKORO_ARTIFACTS_DIR" ]]; then
   cd "${KOKORO_ARTIFACTS_DIR}/github/gvisor"
 fi
+bazel version
 bazel \
   --bazelrc="${KYTHE_DIR}/extractors.bazelrc" \
   build \

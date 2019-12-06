@@ -5,9 +5,9 @@ if which use_bazel.sh >/dev/null 2>/dev/null; then
   use_bazel.sh latest
 fi
 bazel version
-python3 -V
-which python3
-which python3.6
+
+pyenv versions
+pyenv global 3.6.1
 
 readonly KYTHE_VERSION='v0.0.37'
 readonly WORKDIR="$(mktemp -d)"

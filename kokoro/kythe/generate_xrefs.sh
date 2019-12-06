@@ -1,7 +1,10 @@
 #!/bin/bash
 set -ex
 
-source ../common_bazel.sh
+if which use_bazel.sh >/dev/null 2>/dev/null; then
+  use_bazel.sh latest
+fi
+bazel version
 
 readonly KYTHE_VERSION='v0.0.37'
 readonly WORKDIR="$(mktemp -d)"

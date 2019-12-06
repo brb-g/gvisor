@@ -71,7 +71,7 @@ load("@rules_python//python:pip.bzl", "pip_import")
 
 pip_import(
     name = "pydeps",
-    python_interpreter = "python3.6",
+    python_interpreter = "python3.6.1",
     requirements = "//benchmarks:requirements.txt",
 )
 

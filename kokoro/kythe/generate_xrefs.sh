@@ -9,8 +9,6 @@ bazel version
 pyenv versions
 pyenv global 3.6.1
 
-strings /usr/lib/x86_64-linux-gnu/libstdc++.so.6 | grep GLIBCXX
-
 readonly KYTHE_VERSION='v0.0.37'
 readonly WORKDIR="$(mktemp -d)"
 readonly KYTHE_DIR="${WORKDIR}/kythe-${KYTHE_VERSION}"
@@ -23,13 +21,14 @@ tar --no-same-owner -xzf "${WORKDIR}/kythe.tar.gz" --directory "$WORKDIR"
 if [[ -n "$KOKORO_ARTIFACTS_DIR" ]]; then
   cd "${KOKORO_ARTIFACTS_DIR}/github/gvisor"
 fi
-bazel \
-  --bazelrc="${KYTHE_DIR}/extractors.bazelrc" \
-  build \
-  --override_repository kythe_release="${KYTHE_DIR}" \
-  --define=kythe_corpus=gvisor.dev \
-  //...
+#bazel \
+#  --bazelrc="${KYTHE_DIR}/extractors.bazelrc" \
+#  build \
+#  --override_repository kythe_release="${KYTHE_DIR}" \
+#  --define=kythe_corpus=gvisor.dev \
+#  //...
 
-"${KYTHE_DIR}/tools/kzip" merge \
-  --output "$KZIP_FILENAME" \
-  $(find -L bazel-out/*/extra_actions/ -name '*.kzip')
+#"${KYTHE_DIR}/tools/kzip" merge \
+#  --output "$KZIP_FILENAME" \
+#  $(find -L bazel-out/*/extra_actions/ -name '*.kzip')
+echo foo > "$KZIP_FILENAME"

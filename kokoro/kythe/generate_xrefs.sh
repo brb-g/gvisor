@@ -11,15 +11,19 @@ pyenv global 3.6.1
 
 readonly KYTHE_VERSION='v0.0.37'
 readonly WORKDIR="$(mktemp -d)"
-readonly KYTHE_DIR="${WORKDIR}/kythe-${KYTHE_VERSION}"
-readonly KZIP_FILENAME="$(git rev-parse HEAD).kzip"
 
 wget -q -O "${WORKDIR}/kythe.tar.gz" \
   "https://github.com/kythe/kythe/releases/download/${KYTHE_VERSION}/kythe-${KYTHE_VERSION}.tar.gz"
 tar --no-same-owner -xzf "${WORKDIR}/kythe.tar.gz" --directory "$WORKDIR"
+readonly KYTHE_DIR="${WORKDIR}/kythe-${KYTHE_VERSION}"
 
 if [[ -n "$KOKORO_ARTIFACTS_DIR" ]]; then
   cd "${KOKORO_ARTIFACTS_DIR}/github/gvisor"
+fi
+if [[ -n "$KOKORO_GIT_COMMIT" ]]; then
+  readonly KZIP_FILENAME="${KOKORO_GIT_COMMIT}.kzip"
+else
+  readonly KZIP_FILENAME="$(git rev-parse HEAD).kzip"
 fi
 #bazel \
 #  --bazelrc="${KYTHE_DIR}/extractors.bazelrc" \

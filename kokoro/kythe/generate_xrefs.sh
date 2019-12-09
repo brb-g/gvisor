@@ -21,7 +21,7 @@ if [[ -n "$KOKORO_ARTIFACTS_DIR" ]]; then
   cd "${KOKORO_ARTIFACTS_DIR}/github/gvisor"
 fi
 if [[ -n "$KOKORO_GIT_COMMIT" ]]; then
-  readonly KZIP_FILENAME="${KOKORO_GIT_COMMIT}.kzip"
+  readonly KZIP_FILENAME="${KOKORO_ARTIFACTS_DIR}/${KOKORO_GIT_COMMIT}.kzip"
 else
   readonly KZIP_FILENAME="$(git rev-parse HEAD).kzip"
 fi
